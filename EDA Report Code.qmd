@@ -1,5 +1,6 @@
 ---
 title: "25402226_Projects"
+author: Spencer Clarke 
 format: pdf
 editor: visual
 echo: FALSE 
@@ -7,9 +8,7 @@ warning: FALSE
 message: FALSE
 ---
 
-## Quarto
 
-Quarto enables you to weave together content and executable code into a finished document. To learn more about Quarto see <https://quarto.org>.
 
 ## Running Code
 
