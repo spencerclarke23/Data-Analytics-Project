@@ -1,0 +1,558 @@
+---
+title: "25402226_Projects"
+format: pdf
+editor: visual
+echo: FALSE 
+warning: FALSE
+message: FALSE
+---
+
+## Quarto
+
+Quarto enables you to weave together content and executable code into a finished document. To learn more about Quarto see <https://quarto.org>.
+
+## Running Code
+
+```{r}
+library(tidyverse)
+library(ggplot2)
+library(ggpol)
+library(ggpubr)
+library(plyr)
+library(dplyr)
+library(zoo)
+library(ggmap)
+library(plotly)
+library(lubridate)
+library(caret)
+library(countrycode)
+library(treemapify)
+```
+
+Project 4: Research Question: How do migration rate trends over the decades differ between landlocked nations, particularly those that are less developed, and countries with access to the sea, and how do these trends compare to the global average for each decade?
+
+```{r}
+# Loading he necesary libraries, setting working directory and importing the data, as well as an inital insection.
+library(tidyverse)
+library(dplyr)
+
+#Setting working directory ( to make sure it is accessible throughout the project) and reading in the date
+setwd("/Users/spencerclarke/Desktop/Data Cleaning Project")
+demo_indic_preview <- read.csv("WPP2024_Demographic_Indicators_Medium.csv")
+
+#Initial manual review of the dataset so as to get bearings on the general structure of it 
+
+demo_indic_preview
+
+#-------------------------------------------------------------------#
+
+```
+
+lnitiail clean and linearising of data
+
+```{r}
+library(ggplot2)
+
+# Data preparation and wrangling. Here an initial data frame is created with all the relevant columns present that I have deemed as relevant for the project. This was done after an inital preview of the data where the unedited dataset was read in. I then identified the variables, columns and specific data I was going to use from there, and filtered and cleaned this data. Further data frames will use this inital cleamned dataframe as a starting point and then further filterdpending on the question being answered.
+
+
+
+demo_indic_initial <- read.csv("WPP2024_Demographic_Indicators_Medium.csv") |>
+  filter(LocTypeName %in% c(
+    "Income group", "Development group", "Geographic region", "World", "Ad Hoc groups"
+  )) |> 
+  filter(
+    grepl("LLDC", Location) | 
+    grepl("Countries with Access to the Sea", Location) |
+    Location %in% c(
+      "BRICS", "ECA: Least developed countries", "ESCAP: Small Islands Developing States", 
+      "ESCAP: WB Low Income Economies", "ESCAP: WB Lower Middle Income Economies", 
+      "ESCAP: WB Upper Middle Income Economies", "ESCWA: Arab Low-Income Countries (LICs)", 
+      "ESCWA: Arab Middle-Income Countries (MICs)", "Least developed: Africa", 
+      "Least developed: Asia", "Least developed: Latin America and the Caribbean", 
+      "Least developed: Oceania", "Less developed: Africa", "Less developed: Asia", 
+      "Less developed: Latin America and the Caribbean", "Less developed: Oceania", 
+      "More developed: Asia", "More developed: Europe", "More developed: Northern America", 
+      "More developed: Oceania", "Low-and-Lower-middle-income countries", "High-income countries",
+      "Low-and-middle-income countries", "Middle-income countries", 
+      "Upper-middle-income countries", "Lower-middle-income countries", 
+      "Low-income countries", "Africa", "Asia", "Europe", "Northern America", "Oceania", "World", "Latin America and the Caribbean"
+    )
+  ) |> 
+  mutate(Decade = floor(Time / 10) * 10) |>  # Create Decade column
+  filter(!is.na(NetMigrations)) |>  # Remove rows with NA values in NetMigrations
+  select(Location, Time, NetMigrations, LocTypeName, Decade, PopChange, PopDensity, IMR) |>
+  drop_na() # Remove rows with NA values in the selected columns
+
+```
+
+Net Migration Trends per region:
+
+```{r}
+#data wrangling
+#---------------------------------------------------------------------------------------------#
+library(dplyr)
+library(ggplot2)
+
+#further filtering based on geographic location 
+migration_trends <- demo_indic_initial |> 
+  filter(LocTypeName == "Geographic region") |> 
+  select(Location, NetMigrations, LocTypeName, Decade)
+
+#averaging the data for ease of plotting
+net_migration_trends <- migration_trends |> 
+  group_by(Decade, Location) |> 
+  summarise(AverageNetMigration = mean(NetMigrations, na.rm = TRUE), .groups = 'drop')
+
+#New migration trends are plotted as a starting point for reference, and to display how these trends may or may not be characterised by income level/development level.
+
+net_migration_plot <- ggplot(net_migration_trends, aes(x = Decade, y = AverageNetMigration, color = Location, group = Location)) +
+  geom_line(size = 1) +
+  geom_point(size = 2) +
+  labs(title = "Net Migration Trends Across Regions Over Decades",
+       subtitle = "Average Net Migration by Region Over Time",
+       x = "Decade",
+       y = "Average Net Migration",
+       color = "Region") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        plot.title = element_text(face = "bold", size = 16),
+        plot.subtitle = element_text(size = 12, face = "italic")) +
+  scale_color_brewer(palette = "Set1")
+
+
+net_migration_plot
+
+```
+
+Population growth trends by region:
+
+```{r}
+library(ggplot2)
+
+# Filter data for decades between 2010 and 2050
+demo_indic_initial_2 <- demo_indic_initial |> 
+  filter(Decade >= 2010 & Decade <= 2050) |> group_by(Decade, Location) |>   # Group by Decade and Location
+  summarise(PopChange = sum(PopChange, na.rm = TRUE), IMR = mean(IMR, na.rm = TRUE), .groups = 'drop')
+
+#Filtering
+income_groups <- c("Low-and-Lower-middle-income countries", "High-income countries", "Low-and-middle-income countries", "Middle-income countries", "Upper-middle-income countries", "Lower-middle-income countries", "Low-income countries")
+regions <- c("Africa", "Asia", "Europe", "Northern America", "Oceania", "World", "Latin America and the Caribbean")
+
+income_data <- demo_indic_initial |> filter(Location %in% income_groups)
+region_data <- demo_indic_initial |> filter(Location %in% regions)
+
+#Plotting population growth trends for income groups, to see if there is a link between growth and income and tying iy into net migration.
+income_growth_plot <- ggplot(income_data, aes(x = Decade, y = PopChange, color = Location, group = Location)) +
+  geom_line(size = 1) +
+  geom_point(size = 2) +
+  labs(title = "Population Growth Trends by Income Group Over Decades",
+       subtitle = "Total Population Change per Income Group for Each Decade",
+       x = "Decade",
+       y = "Population Change") +
+  scale_y_continuous(labels = scales::comma) +
+  theme_linedraw() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        plot.title = element_text(face = "bold", size = 16),
+        plot.subtitle = element_text(size = 12, face = "italic"))
+
+#This is to plot population growth by decade
+region_growth_plot <- ggplot(region_data, aes(x = Decade, y = PopChange, color = Location, group = Location)) +
+  geom_line(size = 1) +
+  geom_point(size = 2) +
+  labs(title = "Population Growth Trends by Region Over Decades",
+       subtitle = "Total Population Change per Region for Each Decade",
+       x = "Decade",
+       y = "Population Change") +
+  scale_y_continuous(labels = scales::comma) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        plot.title = element_text(face = "bold", size = 16),
+        plot.subtitle = element_text(size = 12, face = "italic"))
+
+
+
+region_growth_plot
+income_growth_plot
+```
+
+```{r}
+
+pop_imr_data <- demo_indic_initial |> 
+  filter(Location %in% regions)
+
+pop_imr_data_income <- demo_indic_initial |> 
+  filter(Location %in% income_groups)
+
+#Plotting these 2 graphs
+
+pop_vs_imr_plot <- ggplot(pop_imr_data, aes(x = IMR, y = PopChange, color = Location)) +
+  geom_point(size = 2, alpha = 0.7) +
+  geom_smooth(method = "lm", se = FALSE, linetype = "dashed") +
+  labs(title = "Comparison of Population Growth and Infant Mortality Rate (IMR) - Regions",
+       subtitle = "Relationship between Population Growth and IMR across Regions",
+       x = "Infant Mortality Rate (IMR)",
+       y = "Population Change",
+       color = "Location") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        plot.title = element_text(face = "bold", size = 16),
+        plot.subtitle = element_text(size = 12, face = "italic"))
+
+pop_vs_imr_income_plot <- ggplot(pop_imr_data_income, aes(x = IMR, y = PopChange, color = Location)) +
+  geom_point(size = 2, alpha = 0.7) +
+  geom_smooth(method = "lm", se = FALSE, linetype = "dashed") +
+  labs(title = "Comparison of Population Growth and Infant Mortality Rate (IMR) - Income Groups",
+       subtitle = "Relationship between Population Growth and IMR across Income Groups",
+       x = "Infant Mortality Rate (IMR)",
+       y = "Population Change",
+       color = "Income Group") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        plot.title = element_text(face = "bold", size = 16),
+        plot.subtitle = element_text(size = 12, face = "italic"))
+
+pop_vs_imr_plot
+pop_vs_imr_income_plot
+```
+
+```{r}
+
+
+# Filter the data for income and development groups and count the number of records per location
+incomeVsmig <- demo_indic_initial |> 
+  filter(Location %in% c("Low-and-Lower-middle-income countries"))
+
+
+
+income_vs_dev_boxplot <- ggplot(incomeVsmig, aes(x = Location, y = NetMigrations, fill = Location)) +
+  geom_boxplot() +
+  labs(title = "Low-and-Lower-middle-income countries",
+       x = "Income",
+       y = "Net Migrations") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1, size = 8),
+        legend.position = "none")
+
+
+
+print(income_vs_dev_boxplot)
+
+# Calculate global average migration rate for each decade
+global_avg <- demo_indic_initial |> 
+  group_by(Decade) |> 
+  summarise(GlobalAvgNetMigration = mean(NetMigrations, na.rm = TRUE))
+
+global_avg
+```
+
+```{r}
+LLC_vs_SA <- demo_indic_initial |> 
+  select(Decade, Location, NetMigrations, LocTypeName)
+
+
+# Producing and displaying summary statistics for the filtered rows and columns
+summary_land_locked <- LLC_vs_SA |> 
+  filter(LocTypeName %in% c(
+    "ESCAP: LLDC (LLDC_E)",
+    "Land-locked Developing Countries (LLDC)",
+    "LLDC: Africa",
+    "LLDC: Asia",
+    "LLDC: Europe",
+    "LLDC: Latin America"
+  )) |> 
+  summary()
+
+summary_coastal <- LLC_vs_SA |> 
+  filter(LocTypeName == "Countries with Access to the Sea") |> 
+  summary()
+
+# Graph 1 - Migration Trends of landlocked vs coastal countries classified as less 'developed' (LD)
+LL_SA_plot <- ggplot(
+  LLC_vs_SA |> 
+    filter(Location %in% c(
+      "ESCAP: LLDC (LLDC_E)",
+      "Land-locked Developing Countries (LLDC)",
+      "LLDC: Africa",
+      "LLDC: Asia",
+      "LLDC: Europe",
+      "LLDC: Latin America",
+      "Countries with Access to the Sea"
+    )),
+  aes(x = as.factor(Decade), y = NetMigrations, fill = Location)
+) +
+  geom_bar(stat = "identity", position = "dodge") +
+  geom_smooth(aes(group = Location), method = "lm", se = TRUE, color = "blue") +
+  labs(
+    title = "Migration Rate Trends Over the Decades: Landlocked vs Coastal Countries",
+    x = "Decade",
+    y = "Net Migrations (thousands)",
+    fill = "Location"
+  ) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1, size = 8))
+
+LL_SA_plot
+```
+
+# Assignment 2:
+
+```{r}
+
+# Set working directory
+setwd("/Users/spencerclarke/Desktop/Data Cleaning Project")
+
+retail_data <- read.csv("Online Retail.csv", encoding = "latin1")
+
+# Here I remove any cells with special characters in them such as ? for example. The need for this was found upon doing an initial inspection of the dataset in excel, before I transformed it into a csv file better efficiency on my laptop.I also set the Invoice Date into a useful format for future use. 
+
+retail_data$InvoiceDate <- dmy_hms(retail_data$InvoiceDate)
+colnames(retail_data) <- gsub('﻿', '', colnames(retail_data))
+
+# Removing all NA, "" and 0 values in the data, (the 0 values from unit price). Manual Items are also removed from the data set, while a total spend column is added to the dataset so values of transactions can more clearly be seen.
+retail_data_clean <- retail_data |> 
+  filter(!is.na(InvoiceDate)) |> 
+  filter(UnitPrice != "" & !is.na(UnitPrice) & UnitPrice != 0) |> 
+  filter(!is.na(CustomerID)) |> 
+  filter(Description != "" & !is.na(Description)) |> 
+  filter(Description != "Manual") |> 
+  mutate(TotalSpend = Quantity * UnitPrice)
+
+
+
+
+```
+
+```{r}
+
+#grouping the data by country and then summarising the total spend per country per year
+
+retail_country_year <- retail_data_clean |> 
+  mutate(Year = as.integer(format(InvoiceDate, "%Y"))) |>
+  group_by(Country, Year) |> 
+  summarise(TotalSpend = sum(UnitPrice * Quantity, na.rm = TRUE), .groups = 'drop')
+
+#this selects the top 5 countries based on the variable Total Spend and prepares them for graphing
+top5_countries_per_year <- retail_country_year |> 
+  group_by(Year) |> 
+  arrange(desc(TotalSpend)) |> 
+  slice_head(n = 5) |> 
+  ungroup()
+
+
+
+# Plot the net spend per country per year for the top 5 countries
+ggplot(top5_countries_per_year, aes(x = Year, y = TotalSpend / 1000, color = Country)) +
+  geom_line(size = 1) +
+  scale_x_continuous(breaks = unique(top5_countries_per_year$Year)) +
+  labs(title = "Net Spend per Top 5 Countries per Year",
+       x = "Year",
+       y = "Net Spend (in Thousands)",
+       color = "Country") +
+  theme_minimal()
+
+```
+
+```{r}
+library(treemapify)
+
+total_spend_per_year <- retail_country_year |> 
+  group_by(Year) |> 
+  summarise(TotalSpend = sum(TotalSpend, na.rm = TRUE))
+
+
+yr_highest_spend <- total_spend_per_year |> 
+  filter(TotalSpend == max(TotalSpend)) |> 
+  pull(Year)
+
+
+total_biggest_year <- retail_country_year |> 
+  filter(Year == yr_highest_spend) |> 
+  arrange(desc(TotalSpend)) |> 
+  slice_head(n = 10)
+
+# Plot a tree map showing the percentage of total spend per country in the year with the highest total spending
+
+ggplot(total_biggest_year, aes(area = TotalSpend, fill = Country, label = paste(Country, round(TotalSpend / sum(TotalSpend) * 100, 2), "%"))) +
+  scale_fill_brewer(palette = "Set3") +
+  geom_treemap() +
+  geom_treemap_text(colour = "white", place = "centre", grow = TRUE) +
+  labs(title = paste("Percentage of Total Spend by Country in", yr_highest_spend),
+       fill = "Country") +
+  theme_minimal()
+```
+
+```{r}
+
+spend_heatmap <- retail_data_clean |> 
+  mutate(
+    InvoiceDate = ymd_hms(InvoiceDate),  # Parse datetime
+    Time = factor(hour(InvoiceDate), levels = 0:23, 
+                  labels = c("12 AM", "1 AM", "2 AM", "3 AM", "4 AM", "5 AM", 
+                             "6 AM", "7 AM", "8 AM", "9 AM", "10 AM", "11 AM", 
+                             "12 PM", "1 PM", "2 PM", "3 PM", "4 PM", "5 PM", 
+                             "6 PM", "7 PM", "8 PM", "9 PM", "10 PM", "11 PM"), 
+                  ordered = TRUE),
+    TotalSpend = UnitPrice * Quantity  
+  )
+
+
+spend_heatmap_graph <- spend_heatmap |> 
+  group_by(Time) |> 
+  summarise(TotalSpend = sum(UnitPrice * Quantity, na.rm = TRUE))
+
+library(ggplot2)
+ggplot(spend_heatmap_graph, aes(x = Time, y = 1, fill = TotalSpend)) +
+  geom_tile(color = "white") +
+  scale_fill_gradient(low = "lightblue", high = "red") +
+  labs(x = "Time of Day", y = NULL, title = "Total Spend by Time of Day in 2011 (UK)") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  theme(axis.text.y = element_blank(),
+        axis.ticks.y = element_blank())
+```
+
+further analysis:
+
+```{r}
+#Impulsive purchasing set up amongst UK 
+# Look at the heatmap visually and also looking at the dataframe created for it is evident that the most prolific times for product purchases are 5am, 7am, and 8pm.
+
+
+hotspot_times <- c("5 AM", "7 AM", "8 PM")
+
+
+product_hotspots <- spend_heatmap |> 
+  filter(Time %in% hotspot_times) |> 
+  group_by(Time, Description) |> 
+  summarise(
+    TotalQuantity = sum(Quantity, na.rm = TRUE),
+    TotalSpend = sum(TotalSpend, na.rm = TRUE),  # Aggregate existing TotalSpend
+    .groups = "drop"
+  ) |> 
+  arrange(desc(TotalSpend))
+
+
+head(product_hotspots, 10)
+
+
+
+
+```
+
+```{r}
+#maybe lastly see what group all unique instances of a product with a unique name, sum the total spend on the product and group by country too.
+product_country_summary <- retail_data_clean |> 
+  mutate(InvoiceDate = lubridate::ymd_hms(InvoiceDate)) |> 
+  mutate(ProductSpend = UnitPrice * Quantity) |> 
+  group_by(Country, Description) |> 
+  summarise(
+    TotalQuantity = sum(Quantity, na.rm = TRUE),
+    TotalSpend = sum(ProductSpend, na.rm = TRUE),
+    .groups = "drop"
+  ) |> 
+  arrange(desc(TotalSpend))
+
+product_country_summary
+
+
+
+```
+
+```{r}
+TopSelling <- retail_data_clean |> 
+  mutate(
+    InvoiceDate = ymd_hms(InvoiceDate), 
+    Year = year(InvoiceDate), 
+    Time = factor(hour(InvoiceDate), levels = 0:23, 
+                  labels = c("12 AM", "1 AM", "2 AM", "3 AM", "4 AM", "5 AM", 
+                             "6 AM", "7 AM", "8 AM", "9 AM", "10 AM", "11 AM", 
+                             "12 PM", "1 PM", "2 PM", "3 PM", "4 PM", "5 PM", 
+                             "6 PM", "7 PM", "8 PM", "9 PM", "10 PM", "11 PM"), 
+                  ordered = TRUE)
+  ) |> 
+  filter(Year == 2011, Country == "United Kingdom") |> 
+  group_by(Description, Time) |> 
+  summarise(TotalSpend = sum(UnitPrice * Quantity, na.rm = TRUE), .groups = "drop") |> 
+  arrange(desc(TotalSpend))
+
+top_5_products <- TopSelling |> 
+  group_by(Description) |> 
+  summarise(TotalSpend = sum(TotalSpend), .groups = "drop") |> 
+  arrange(desc(TotalSpend)) |> 
+  slice_head(n = 3) |>  
+  pull(Description)
+
+top_5_data <- TopSelling |> 
+  filter(Description %in% top_5_products)
+
+ggplot(top_5_data, aes(x = Time, y = TotalSpend, color = Description, group = Description)) +
+  geom_line(size = 1.2) + 
+  geom_point(size = 2) + 
+  labs(
+    title = "Total Spend of Top 3 Products by Time of Day (2011, UK)",
+    x = "Time of Day",
+    y = "Total Spend",
+    color = "Product"
+  ) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(hjust = 0.5, size = 16, face = "bold"),
+    axis.text.x = element_text(angle = 45, hjust = 1), 
+    legend.position = "bottom"
+  )
+
+```
+
+```{r}
+
+discounts <- retail_data_clean |> 
+  filter(Description == "Discount")
+
+discounts_aggr <- discounts |> 
+  mutate(
+    InvoiceDate = ymd_hms(InvoiceDate), 
+    Year = year(InvoiceDate),
+    Time = factor(hour(InvoiceDate), levels = 0:23,  #Giving time levels for ease of setup for the graph
+                  labels = c("12 AM", "1 AM", "2 AM", "3 AM", "4 AM", "5 AM", 
+                             "6 AM", "7 AM", "8 AM", "9 AM", "10 AM", "11 AM", 
+                             "12 PM", "1 PM", "2 PM", "3 PM", "4 PM", "5 PM", 
+                             "6 PM", "7 PM", "8 PM", "9 PM", "10 PM", "11 PM"), 
+                  ordered = TRUE),  #Ordering the data by time levels for graphing purposes
+    DiscountAmount = abs(UnitPrice * Quantity) 
+  ) |> 
+  filter(Year == 2011, Country == "United Kingdom") |> 
+  group_by(Time) |> 
+  summarise(TotalDiscount = sum(DiscountAmount), .groups = "drop")
+
+
+head(discounts_aggr)
+
+
+#Join spend_heatmap and discounts_aggreg data by Time so it can be visualized 
+combined_data <- inner_join(
+  spend_heatmap_graph, 
+  discounts_aggr, 
+  by = "Time"
+)
+
+
+head(combined_data)
+
+
+ggplot(discounts_aggr, aes(x = Time, y = TotalDiscount, fill = Time)) +
+  geom_bar(stat = "identity", color = "black") + 
+  scale_fill_brewer(palette = "Set3") + 
+  labs(
+    title = "Total Discounts by Time of Day (2011, UK)",
+    x = "Time of Day",
+    y = "Total Discount Amount"
+  ) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(hjust = 0.5, size = 16, face = "bold"),
+    axis.text.x = element_text(angle = 45, hjust = 1), 
+    legend.position = "none"
+  )
+
+```
